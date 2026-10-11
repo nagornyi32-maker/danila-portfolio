@@ -22,3 +22,61 @@ function move(step){current=photoIds[(photoIds.indexOf(current)+step+photoIds.le
 document.querySelector('#previous').addEventListener('click',()=>move(-1));
 document.querySelector('#next').addEventListener('click',()=>move(1));
 dialog.addEventListener('keydown',e=>{if(!isVideo&&e.key==='ArrowRight')move(1);if(!isVideo&&e.key==='ArrowLeft')move(-1)});
+
+// An original, low-resolution isometric workshop. No animation dependencies.
+(() => {
+ const canvas=document.querySelector('#workshop'); if(!canvas)return;
+ const ctx=canvas.getContext('2d',{alpha:true});
+ const W=440,H=310;canvas.width=W;canvas.height=H;ctx.imageSmoothingEnabled=false;
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+ const toggle=document.querySelector('#workshop-toggle');
+ let paused=reduced.matches,visible=true,clock=0,last=0,raf=0;
+ const pictures=[45,52,43,24,19,41,42,35,34].map(i=>{const im=new Image();im.src='thumbs/'+media[i].id+'-480.webp';im.onload=()=>{if(paused)draw(clock)};return im});
+ const C={edge:'#10282d',floor:'#19393e',grid:'#24464a',steel:'#78938c',light:'#bed0b5',side:'#365556',dark:'#213b3e',belt:'#263438',seam:'#556766',gold:'#eeae61',goldSide:'#aa693c',paper:'#f6d998',orange:'#ef7d43'};
+ function p(x,y,z=0){return [Math.round(198+(x-y)*.82),Math.round(55+(x+y)*.43-z)]}
+ function poly(points,fill,stroke){ctx.beginPath();points.forEach((a,i)=>i?ctx.lineTo(...a):ctx.moveTo(...a));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke()}}
+ function line(a,b,color,width=1){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke()}
+ function box(x,y,w,d,z,h,top,front=C.side,right=C.dark){poly([p(x,y+d,z),p(x+w,y+d,z),p(x+w,y+d,z+h),p(x,y+d,z+h)],front);poly([p(x+w,y,z),p(x+w,y+d,z),p(x+w,y+d,z+h),p(x+w,y,z+h)],right);poly([p(x,y,z+h),p(x+w,y,z+h),p(x+w,y+d,z+h),p(x,y+d,z+h)],top)}
+ function preview(im,x,y,w,h){ctx.fillStyle='#173039';ctx.fillRect(x,y,w,h);if(im?.complete&&im.naturalWidth){let sw=im.naturalWidth,sh=im.naturalHeight;const scale=Math.max(w/sw,h/sh);ctx.drawImage(im,(w-sw*scale)/2+x,(h-sh*scale)/2+y,sw*scale,sh*scale)}}
+ function thumbnail(im,x,y,w,h){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();preview(im,x,y,w,h);ctx.restore()}
+ function folder(x,y,z,im,accent=C.gold){const [sx,sy]=p(x,y,z);poly([[sx-16,sy-1],[sx+8,sy+10],[sx+19,sy+4],[sx-5,sy-8]],'#081d244d');ctx.fillStyle=C.goldSide;ctx.fillRect(sx-15,sy-30,30,27);ctx.fillStyle=accent;ctx.fillRect(sx-14,sy-31,13,5);ctx.fillRect(sx-16,sy-26,32,24);ctx.fillStyle=C.paper;ctx.fillRect(sx-13,sy-28,25,4);ctx.fillStyle='#f3c981';ctx.fillRect(sx-16,sy-23,32,21);ctx.fillStyle='#9c6139';ctx.fillRect(sx+14,sy-23,2,21);thumbnail(im,sx-12,sy-21,21,15);ctx.fillStyle='#f8e8b7';ctx.fillRect(sx+11,sy-19,1,7);ctx.fillStyle='#ffe0a5';ctx.fillRect(sx-16,sy-23,30,1)}
+ function table(x,y,im,color){for(const [dx,dy]of [[2,2],[48,2],[2,36],[48,36]])box(x+dx,y+dy,5,5,0,25,C.side,'#24464a','#142f35');box(x,y,57,47,25,5,'#d2c6a3','#a39675','#746f59');box(x+5,y+31,22,10,30,2,color,'#667a74','#46615e');const [sx,sy]=p(x+28,y+12,31);ctx.fillStyle='#152e33';ctx.fillRect(sx-13,sy-27,28,22);ctx.fillStyle='#759990';ctx.fillRect(sx-12,sy-28,25,2);thumbnail(im,sx-10,sy-24,21,15);ctx.fillStyle='#203d41';ctx.fillRect(sx,sy-5,3,8);ctx.fillStyle='#6d8981';ctx.fillRect(sx-5,sy+2,14,2);box(x+40,y+31,7,8,30,7,'#f1ddd0','#c99970','#936d53');box(x+7,y+20,17,11,30,2,'#f4d08d','#ae814b','#856040')}
+ function belt(x,y,w,d,along,t){box(x+3,y+3,w-6,d-6,0,17,'#1b363b','#112c32','#0c242a');box(x,y,w,d,17,7,'#607b75','#385958','#243e44');box(x+3,y+3,w-6,d-6,24,1,C.belt,C.belt,C.belt);const length=along==='x'?w:d;for(let i=-16;i<length;i+=12){const pos=i+(t*14%12);if(pos<4||pos>length-4)continue;line(along==='x'?p(x+pos,y+4,25):p(x+4,y+pos,25),along==='x'?p(x+pos,y+d-4,25):p(x+w-4,y+pos,25),C.seam)}line(p(x,y,25),p(x+w,y,25),'#a1b4a0');line(p(x,y+d,25),p(x+w,y+d,25),'#7f9a8f');for(let i=9;i<w;i+=22){box(x+i,y+d,3,2,19,2,'#e4ac61','#ae7548','#ae7548')}}
+ function plant(x,y){box(x,y,14,14,0,12,'#a2afa0','#617a71','#3e5d57');const[sx,sy]=p(x+7,y+7,12);ctx.fillStyle='#76a895';ctx.fillRect(sx-1,sy-20,3,20);ctx.fillStyle='#8fbaa0';ctx.fillRect(sx-8,sy-19,8,6);ctx.fillRect(sx+2,sy-25,8,7);ctx.fillStyle='#4d806f';ctx.fillRect(sx-5,sy-29,5,9);ctx.fillRect(sx+3,sy-12,8,5)}
+ function draw(t){ctx.clearRect(0,0,W,H);ctx.imageSmoothingEnabled=false;
+  // Raised tiled studio platform, with a deliberately limited pixel palette.
+  box(-8,-8,278,239,-9,9,C.floor,'#102d33','#0c242b');
+  for(let x=0;x<=256;x+=32)line(p(x,0),p(x,224),C.grid);for(let y=0;y<=224;y+=32)line(p(0,y),p(256,y),C.grid);
+  // Back workbench and shelving.
+  box(3,3,8,56,0,45,'#57756d','#385751','#263e41');for(let z=14;z<=42;z+=14)box(3,3,35,56,z,3,'#739083','#385751','#263e41');
+  for(let j=0;j<4;j++)box(11,8+j*11,17,7,31,11,j%2?'#bf9870':'#80a496','#826b51','#4f6861');
+  plant(249,182);table(198,4,pictures[6],'#779e93');
+  belt(218,52,25,46,'y',t);belt(3,86,245,32,'x',t);
+  belt(62,118,25,57,'y',t);belt(140,118,25,57,'y',t);
+  // Sorting gate, warm status lamp and a small control cabinet.
+  box(187,80,7,44,25,4,'#dca36c','#8d6247','#6e513e');box(181,74,15,10,0,29,'#83a198','#4a6a65','#2e4b4c');
+  const [lx,ly]=p(187,78,33);ctx.fillStyle='#eaba70';ctx.fillRect(lx-2,ly-3,5,3);
+  const objects=[]; const desks=[{x:47,y:176,im:0},{x:129,y:176,im:3}];
+  desks.forEach(d=>objects.push({depth:d.x+d.y,draw:()=>table(d.x,d.y,pictures[d.im],d.im?'#80b5b0':'#cf965d')}));
+  // Each packet advances on the main belt, turns at its junction, then settles.
+  for(let i=0;i<5;i++){const age=(t+i*3.6)%18,dest=i%3,turn=[74,152,231][dest],im=pictures[(i+Math.floor((t+i*3.6)/18)*3)%pictures.length];let x,y,z=26;
+   if(age<9){x=-12+(turn+12)*age/9;y=102;}else if(age<14){x=turn;y=102+(dest===2?-66:85)*(age-9)/5;}else{x=turn;y=dest===2?36:187;z=31;}
+   if(age<.7||age>17.7)continue;
+   objects.push({depth:x+y+5,draw:()=>folder(x,y,z,im)});
+  }
+  objects.sort((a,b)=>a.depth-b.depth).forEach(o=>o.draw());
+  // One completed folder at each station makes the destination legible.
+  folder(89,207,31,pictures[2]);folder(171,207,31,pictures[4]);
+  // Small brass inset on the front edge of the platform.
+  const [bx,by]=p(245,232,-3);ctx.fillStyle='#ad8356';ctx.fillRect(bx-8,by,16,2);
+ }
+ function frame(now){raf=0;if(paused||!visible||document.hidden){last=0;return}if(last){clock+=Math.min((now-last)/1000,.08)}last=now;draw(clock);raf=requestAnimationFrame(frame)}
+ function start(){if(!raf&&!paused&&visible&&!document.hidden)raf=requestAnimationFrame(frame)}
+ function label(){toggle.textContent=paused?'Запустить':'Пауза';toggle.setAttribute('aria-label',paused?'Запустить анимацию мастерской':'Приостановить анимацию мастерской');toggle.setAttribute('aria-pressed',String(paused))}
+ toggle.addEventListener('click',()=>{paused=!paused;label();if(paused){cancelAnimationFrame(raf);raf=0;last=0}else start()});
+ reduced.addEventListener('change',e=>{paused=e.matches;label();if(paused){cancelAnimationFrame(raf);raf=0;last=0;draw(6)}else start()});
+ new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;if(!visible){cancelAnimationFrame(raf);raf=0;last=0}else start()},{threshold:.05}).observe(canvas);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(raf);raf=0;last=0}else start()});
+ label();draw(6);clock=6;start();
+})();
+
