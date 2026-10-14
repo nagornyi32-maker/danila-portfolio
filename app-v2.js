@@ -70,3 +70,19 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const observer=new I
  label();draw(6);clock=6;start();
 })();
 
+
+(()=>{
+ const scene=document.querySelector('.phone-scene'),rotor=document.querySelector('.dial-rotor'),receiver=document.querySelector('.receiver'),pause=document.querySelector('#phone-pause');
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)');let stopped=reduced.matches,visible=false,timer,animation,busy=false;
+ function spin(angle=100){if(reduced.matches)return Promise.resolve();animation?.cancel();animation=rotor.animate([{transform:'rotate(0deg)',offset:0},{transform:`rotate(${angle}deg)`,offset:.35,easing:'cubic-bezier(.2,.7,.3,1)'},{transform:`rotate(${angle}deg)`,offset:.48},{transform:'rotate(0deg)',offset:1}],{duration:2100,easing:'cubic-bezier(.4,0,.2,1)'});return animation.finished.catch(()=>{})}
+ function schedule(){clearTimeout(timer);if(stopped||!visible||document.hidden||busy)return;timer=setTimeout(async()=>{await spin(75+Math.random()*65);schedule()},4800)}
+ function label(){pause.textContent=stopped?'Оживить':'Пауза';pause.setAttribute('aria-pressed',String(stopped));pause.setAttribute('aria-label',stopped?'Запустить анимацию телефона':'Приостановить анимацию телефона')}
+ function stop(){clearTimeout(timer);animation?.cancel()}
+ pause.addEventListener('click',()=>{stopped=!stopped;label();if(stopped)stop();else{spin();schedule()}});
+ new IntersectionObserver(e=>{visible=e[0].isIntersecting;if(visible)schedule();else stop()},{threshold:.15}).observe(scene);
+ document.addEventListener('visibilitychange',()=>document.hidden?stop():schedule());reduced.addEventListener('change',()=>{stopped=reduced.matches;label();stop();schedule()});
+ scene.querySelectorAll('[data-phone-photo]').forEach(button=>button.addEventListener('click',async()=>{if(busy)return;busy=true;stop();if(!reduced.matches){animation=rotor.animate([{transform:'rotate(0deg)'},{transform:'rotate(35deg)'},{transform:'rotate(0deg)'}],{duration:450,easing:'ease-in-out'});await animation.finished.catch(()=>{})}current=Number(button.dataset.phonePhoto);sequence=[...scene.querySelectorAll('[data-phone-photo]')].map(b=>Number(b.dataset.phonePhoto));opener=button;render();dialog.showModal();document.body.classList.add('viewing');document.querySelector('#close').focus();busy=false}));
+ dialog.addEventListener('close',schedule);
+ receiver.addEventListener('click',e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();if(scene.classList.contains('calling'))return;stop();scene.classList.add('calling');document.querySelector('#phone-instruction').textContent='Соединяю с Данилой…';setTimeout(()=>{location.href=receiver.href},reduced.matches?0:700)});
+ window.addEventListener('pageshow',()=>{scene.classList.remove('calling');document.querySelector('#phone-instruction').textContent='Сними трубку — обсудим идею';schedule()});label();
+})();
