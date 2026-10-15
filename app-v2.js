@@ -71,4 +71,73 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const observer=new I
 })();
 
 
-(()=>{const entrance=document.querySelector('.entrance');if(!entrance)return;const targets=[...document.body.children].filter(x=>x!==entrance&&x.tagName!=='SCRIPT');targets.forEach(x=>x.inert=true);let opening=false;const reduced=matchMedia('(prefers-reduced-motion: reduce)');function enter(){if(opening)return;opening=true;entrance.classList.add('opening');setTimeout(()=>{entrance.classList.add('leaving');targets.forEach(x=>x.inert=false);document.body.classList.remove('intro-active');setTimeout(()=>{entrance.hidden=true;document.querySelector('.brand').focus({preventScroll:true})},reduced.matches?0:800)},reduced.matches?0:650)}document.querySelector('.entrance-phone').addEventListener('click',enter);document.querySelector('.entrance-skip').addEventListener('click',enter);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!entrance.hidden)enter()});})();
+// Dependency-free WebGL telephone. All meshes and materials are generated locally.
+(()=>{
+const canvas=document.querySelector('#telephone-3d');if(!canvas)return;
+const gl=canvas.getContext('webgl',{antialias:true,alpha:false,powerPreference:'low-power'});if(!gl)return;
+const vertex=`attribute vec3 aPos;attribute vec3 aNormal;attribute vec2 aUV;uniform mat4 uMVP;uniform mat4 uModel;varying vec3 vNormal;varying vec3 vWorld;varying vec2 vUV;void main(){vWorld=(uModel*vec4(aPos,1.)).xyz;vNormal=mat3(uModel)*aNormal;vUV=aUV;gl_Position=uMVP*vec4(aPos,1.);}`;
+const fragment=`precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec2 vUV;uniform vec3 uColor;uniform vec3 uEye;uniform float uMetal;uniform float uTexture;uniform sampler2D uMap;void main(){vec3 n=normalize(vNormal);vec3 l=normalize(vec3(-4.,9.,7.));vec3 e=normalize(uEye-vWorld);float diffuse=max(dot(n,l),0.);float fill=max(dot(n,normalize(vec3(6.,3.,-4.))),0.);float spec=pow(max(dot(n,normalize(l+e)),0.),mix(48.,95.,uMetal));vec3 col=mix(uColor,texture2D(uMap,vUV).rgb,uTexture);vec3 lit=col*(.35+.58*diffuse+.20*fill);lit+=mix(vec3(.25),vec3(.65),uMetal)*spec;float rim=pow(1.-max(dot(n,e),0.),4.);lit+=col*rim*.07;gl_FragColor=vec4(lit,1.);}`;
+function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error('Telephone shader compilation failed');return s}
+let program;try{program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vertex));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))return}catch{return}
+gl.useProgram(program);gl.enable(gl.DEPTH_TEST);
+const loc={};['aPos','aNormal','aUV'].forEach(n=>loc[n]=gl.getAttribLocation(program,n));['uMVP','uModel','uColor','uEye','uMetal','uTexture','uMap'].forEach(n=>loc[n]=gl.getUniformLocation(program,n));
+const I=()=>[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+function mul(a,b){const r=new Array(16).fill(0);for(let c=0;c<4;c++)for(let row=0;row<4;row++)for(let k=0;k<4;k++)r[c*4+row]+=a[k*4+row]*b[c*4+k];return r}
+function transform(x=0,y=0,z=0,rx=0,ry=0,rz=0){const cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),cz=Math.cos(rz),sz=Math.sin(rz);let m=mul([cz,sz,0,0,-sz,cz,0,0,0,0,1,0,0,0,0,1],mul([cy,0,-sy,0,0,1,0,0,sy,0,cy,0,0,0,0,1],[1,0,0,0,0,cx,sx,0,0,-sx,cx,0,0,0,0,1]));m[12]=x;m[13]=y;m[14]=z;return m}
+const norm=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l)},sub=(a,b)=>a.map((x,i)=>x-b[i]),cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+function camera(eye,target,aspect){const z=norm(sub(eye,target)),x=norm(cross([0,1,0],z)),y=cross(z,x);const view=[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-x.reduce((s,v,i)=>s+v*eye[i],0),-y.reduce((s,v,i)=>s+v*eye[i],0),-z.reduce((s,v,i)=>s+v*eye[i],0),1];const f=1/Math.tan(.58/2),near=.1,far=100;return mul([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0],view)}
+function mesh(vertices){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.STATIC_DRAW);return{buffer:b,count:vertices.length/8}}
+function tri(out,a,b,c,uvs){let n=norm(cross(sub(b,a),sub(c,a)));[a,b,c].forEach((p,i)=>out.push(...p,...n,...(uvs?.[i]||[0,0])))}
+function quad(out,a,b,c,d){tri(out,a,b,c);tri(out,a,c,d)}
+function rounded(w,d,r){const p=[];for(let c=0;c<4;c++){const cx=[1,-1,-1,1][c]*(w/2-r),cz=[1,1,-1,-1][c]*(d/2-r);for(let j=0;j<=10;j++){const a=(c*90+j*9)*Math.PI/180;p.push([cx+r*Math.cos(a),cz+r*Math.sin(a)])}}return p}
+function housing(w,d,height,r=.2,bevel=.09,taper=.13){const out=[],rings=[[w-2*bevel,d-2*bevel,0],[w,d,bevel],[w-taper,d-taper,height-bevel],[w-taper-2*bevel,d-taper-2*bevel,height]].map(([a,b,y])=>rounded(a,b,r).map(([x,z])=>[x,y,z]));for(let j=0;j<3;j++)for(let i=0;i<rings[j].length;i++){let k=(i+1)%rings[j].length;quad(out,rings[j][i],rings[j+1][i],rings[j+1][k],rings[j][k])}const top=rings[3];for(let i=0;i<top.length;i++)tri(out,[0,height,0],top[(i+1)%top.length],top[i]);return mesh(out)}
+function cylinder(radius,height,segments=80,inner=0){const out=[];for(let i=0;i<segments;i++){const a=i*2*Math.PI/segments,b=(i+1)*2*Math.PI/segments,point=(r,t,y)=>[r*Math.cos(t),y,r*Math.sin(t)];quad(out,point(radius,a,0),point(radius,a,height),point(radius,b,height),point(radius,b,0));if(inner){quad(out,point(inner,a,height),point(radius,a,height),point(radius,b,height),point(inner,b,height));quad(out,point(inner,a,0),point(inner,b,0),point(inner,b,height),point(inner,a,height))}else{const p=[0,height,0],q=point(radius,b,height),r=point(radius,a,height);tri(out,p,q,r,[[.5,.5],[.5+.5*Math.cos(b),.5+.5*Math.sin(b)],[.5+.5*Math.cos(a),.5+.5*Math.sin(a)]])}}return mesh(out)}
+function tube(points,r,sides=10){const out=[],rings=points.map((p,i)=>{const t=norm(sub(points[Math.min(i+1,points.length-1)],points[Math.max(0,i-1)]));let n=norm(cross(t,Math.abs(t[1])>.9?[1,0,0]:[0,1,0])),b=cross(t,n);return Array.from({length:sides},(_,j)=>p.map((v,k)=>v+r*(n[k]*Math.cos(j*2*Math.PI/sides)+b[k]*Math.sin(j*2*Math.PI/sides))))});for(let i=0;i<rings.length-1;i++)for(let j=0;j<sides;j++){const k=(j+1)%sides;quad(out,rings[i][j],rings[i][k],rings[i+1][k],rings[i+1][j])}return mesh(out)}
+const yellow=[.64,.43,.085],yellowTop=[.82,.60,.17],black=[.035,.04,.038],metal=[.55,.57,.55],ivory=[.86,.84,.76];
+const items=[];const add=(mesh,color,matrix=I(),group='body',metallic=0,texture=null)=>items.push({mesh,color,matrix,group,metallic,texture});
+add(housing(4.05,3.25,.2,.3,.06,0),black,transform(0,.05,0));
+add(housing(4.12,3.3,.91,.36,.13,.45),yellowTop,transform(0,.2,0));
+add(housing(3.58,2.79,.065,.3,.025,0),yellow,transform(0,1.1,0));
+// Inset front identification plate and two cradle switches.
+add(housing(.92,.22,.018,.025,.006,0),metal,transform(0,.92,1.31,.56), 'body',.85);
+for(const x of [-1.36,1.36]){add(housing(.42,.58,.36,.09,.05,0),yellow,transform(x,1.1,-.94));add(cylinder(.075,.12,24),black,transform(x,1.42,-.94))}
+const dialBase=transform(0,1.18,.36,.16);
+add(cylinder(1.17,.07,100),black,dialBase);
+add(cylinder(1.13,.085,100),metal,mul(dialBase,transform(0,.07,0)),'body',.85);
+add(cylinder(1.08,.04,100),ivory,mul(dialBase,transform(0,.155,0)));
+// Engraved stationary numbers live beneath a rotating nickel finger wheel.
+function numberTexture(){const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#e4dfcc';x.fillRect(0,0,1024,1024);x.textAlign='center';x.textBaseline='middle';x.fillStyle='#222722';x.font='600 64px Georgia';for(let i=0;i<10;i++){const a=(-48-i*29)*Math.PI/180;x.save();x.translate(512+395*Math.cos(a),512+395*Math.sin(a));x.rotate(a+Math.PI/2);x.fillText(String((i+1)%10),0,0);x.restore()}const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);return t}
+add(cylinder(1.065,.01,100),ivory,mul(dialBase,transform(0,.20,0)),'body',0,numberTexture());
+add(cylinder(1.1,.055,100,1.025),metal,transform(0,.23,0),'dial',.9);
+add(cylinder(.62,.065,100),metal,transform(0,.22,0),'dial',.85);
+add(cylinder(.55,.025,100),ivory,transform(0,.285,0),'dial');
+add(cylinder(.49,.008,100,.48),metal,transform(0,.314,0),'dial',.8);
+for(let i=0;i<10;i++){const a=(-48-i*29)*Math.PI/180;add(cylinder(.181,.038,40,.147),metal,transform(.82*Math.cos(a),.225,.82*Math.sin(a)),'dial',.8)}
+add(housing(.45,.16,.07,.04,.02,0),metal,mul(dialBase,transform(.88,.29,.66,0,-.65)),'body',.95);
+// A moulded handset: bevelled bridge, rounded acoustic cups, seams and recessed grilles.
+const handle=housing(3.68,.50,.29,.19,.09,.02);add(handle,yellowTop,transform(0,1.82,-1.02),'hand');
+for(const x of [-1.72,1.72]){add(housing(.83,.91,.48,.29,.12,.05),yellowTop,transform(x,1.5,-1.01,0,0,x>0?-.10:.10),'hand');add(housing(.72,.82,.065,.28,.025,0),yellow,transform(x,1.49,-1.01),'hand');add(cylinder(.27,.015,56),black,transform(x,1.48,-1.01,Math.PI),'hand');for(let j=0;j<13;j++){const a=j*2.4,r=.18*Math.sqrt(j/13);add(cylinder(.018,.014,8),metal,transform(x+r*Math.cos(a),1.455,-1.01+r*Math.sin(a),Math.PI),'hand')}}
+// Grounded contact shadow, rendered as layered matte ellipses on the studio floor.
+const shadow=[];for(let j=0;j<18;j++){const r=1+j*.055;const m=I();m[0]=2.2*r;m[10]=1.5*r;m[13]=.004+(18-j)*.0003;shadow.push({mesh:cylinder(1,.001,80),matrix:m,color:[.79+j*.010,.79+j*.010,.78+j*.010]})}
+let cordMesh=null,lastCord=-100,started=0,phase=0,raf=0,finished=false,visible=true;
+const entrance=document.querySelector('.entrance'),button=document.querySelector('.entrance-phone'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+const clamp=x=>Math.max(0,Math.min(1,x)),ease=x=>{x=clamp(x);return x*x*(3-2*x)};
+function handset(t){const p=ease((t-.45)/1.25);const swing=t>1.7?Math.sin((t-1.7)*6)*Math.exp(-(t-1.7)*1.4)*.22:0;return transform(-1.25*p,-.28*p,1.65*p,.12*p,.1*p,-.95*p+swing)}
+function drawItem(item,vp,eye,parent=I()){const model=mul(parent,item.matrix);gl.uniformMatrix4fv(loc.uModel,false,model);gl.uniformMatrix4fv(loc.uMVP,false,mul(vp,model));gl.uniform3fv(loc.uColor,item.color);gl.uniform3fv(loc.uEye,eye);gl.uniform1f(loc.uMetal,item.metallic||0);gl.uniform1f(loc.uTexture,item.texture?1:0);if(item.texture)gl.bindTexture(gl.TEXTURE_2D,item.texture);gl.bindBuffer(gl.ARRAY_BUFFER,item.mesh.buffer);for(const[n,size,offset]of[['aPos',3,0],['aNormal',3,12],['aUV',2,24]]){gl.enableVertexAttribArray(loc[n]);gl.vertexAttribPointer(loc[n],size,gl.FLOAT,false,32,offset)}gl.drawArrays(gl.TRIANGLES,0,item.mesh.count)}
+function draw(now){raf=0;if(finished||!visible||document.hidden)return;const t=started?(now-started)/1000:0;const zoom=ease((t-3.15)/1.2);const darkness=ease((t-2.65)/.8);const w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight),dpr=Math.min(devicePixelRatio||1,1.7);if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}gl.viewport(0,0,canvas.width,canvas.height);const bg=1-darkness*.94;gl.clearColor(bg*.974,bg*.974,bg*.962,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+const eye=[5.6*(1-zoom)+.3*zoom,8.4*(1-zoom)+2.25*zoom,11.4*(1-zoom)+1.7*zoom],target=[0,1.0+zoom*.4,.1+zoom*.26],vp=camera(eye,target,w/h);const hand=handset(t);const dialTurn=t<1.5?ease((t-.65)/.85)*2.8:(1-ease((t-1.65)/1.3))*2.8;
+if(darkness<.01)shadow.forEach(s=>drawItem(s,vp,eye));items.forEach(item=>drawItem(item,vp,eye,item.group==='hand'?hand:item.group==='dial'?mul(dialBase,transform(0,0,0,0,dialTurn)):I()));
+if(Math.abs(t-lastCord)>.035||!cordMesh){lastCord=t;if(cordMesh)gl.deleteBuffer(cordMesh.buffer);const end=[hand[0]*-2.08+hand[4]*1.7+hand[8]*-1.05+hand[12],hand[1]*-2.08+hand[5]*1.7+hand[9]*-1.05+hand[13],hand[2]*-2.08+hand[6]*1.7+hand[10]*-1.05+hand[14]];const points=[];for(let i=0;i<=220;i++){const u=i/220,a=u*Math.PI*42;points.push([-2.02*(1-u)+end[0]*u-.53*Math.sin(u*Math.PI)+.10*Math.cos(a)*Math.sin(u*Math.PI),.32*(1-u)+end[1]*u-.28*Math.sin(u*Math.PI)+.095*Math.sin(a)*Math.sin(u*Math.PI),.65*(1-u)+end[2]*u])}cordMesh=tube(points,.035,7)}drawItem({mesh:cordMesh,matrix:I(),color:black},vp,eye);
+if(started){entrance.style.setProperty('--cinema',darkness);if(t>3.6){const p=ease((t-3.6)/1.35),radius=p*Math.hypot(innerWidth,innerHeight);entrance.style.maskImage=`radial-gradient(circle at 50% 52%, transparent ${radius}px, black ${radius+2}px)`;entrance.style.webkitMaskImage=entrance.style.maskImage}if(t>=5){finish();return}}
+if(started)raf=requestAnimationFrame(draw)}
+function render(){if(!raf&&!finished)raf=requestAnimationFrame(draw)}
+const targets=[...document.body.children].filter(x=>x!==entrance&&x.tagName!=='SCRIPT');targets.forEach(x=>x.inert=true);
+function finish(){finished=true;cancelAnimationFrame(raf);entrance.hidden=true;targets.forEach(x=>x.inert=false);document.body.classList.remove('intro-active');document.querySelector('.brand').focus({preventScroll:true})}
+function start(){if(started||finished)return;if(reduced.matches){finish();return}started=performance.now();entrance.classList.add('film-running');document.querySelector('.entrance-skip').textContent='Пропустить заставку ↗';render()}
+button.addEventListener('click',start);document.querySelector('.entrance-skip').addEventListener('click',finish);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!finished)finish()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});window.addEventListener('resize',render);canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();finish()});
+entrance.classList.add('three-ready');window.telephone3DReady=true;render();
+})();
+
+if(!window.telephone3DReady){(()=>{const entrance=document.querySelector('.entrance');if(!entrance)return;const targets=[...document.body.children].filter(x=>x!==entrance&&x.tagName!=='SCRIPT');targets.forEach(x=>x.inert=true);let opening=false;const reduced=matchMedia('(prefers-reduced-motion: reduce)');function enter(){if(opening)return;opening=true;entrance.classList.add('opening');setTimeout(()=>{entrance.classList.add('leaving');targets.forEach(x=>x.inert=false);document.body.classList.remove('intro-active');setTimeout(()=>{entrance.hidden=true;document.querySelector('.brand').focus({preventScroll:true})},reduced.matches?0:800)},reduced.matches?0:650)}document.querySelector('.entrance-phone').addEventListener('click',enter);document.querySelector('.entrance-skip').addEventListener('click',enter);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!entrance.hidden)enter()});})();
+}
